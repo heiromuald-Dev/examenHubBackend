@@ -1,0 +1,66 @@
+{
+  "info": {
+    "name": "TP CRUD Etudiants",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "GET all etudiants",
+      "request": { "method": "GET", "url": "http://localhost:3000/etudiants" }
+    },
+    {
+      "name": "GET etudiant by id",
+      "request": { "method": "GET", "url": "http://localhost:3000/etudiants/1" }
+    },
+    {
+      "name": "POST creer etudiant",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nom\": \"Andria\",\n  \"prenom\": \"Faly\",\n  \"email\": \"faly@mail.com\",\n  \"age\": 21\n}"
+        },
+        "url": "http://localhost:3000/etudiants"
+      }
+    },
+    {
+      "name": "PUT modifier etudiant (complet)",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nom\": \"Rakoto\",\n  \"prenom\": \"Jean\",\n  \"email\": \"jean.new@mail.com\",\n  \"age\": 25\n}"
+        },
+        "url": "http://localhost:3000/etudiants/1"
+      }
+    },
+    {
+      "name": "PATCH modifier etudiant (partiel)",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"age\": 30\n}" },
+        "url": "http://localhost:3000/etudiants/1"
+      }
+    },
+    {
+      "name": "DELETE etudiant",
+      "request": { "method": "DELETE", "url": "http://localhost:3000/etudiants/1" }
+    },
+    {
+      "name": "Erreur - GET id inexistant (404)",
+      "request": { "method": "GET", "url": "http://localhost:3000/etudiants/999" }
+    },
+    {
+      "name": "Erreur - POST champ manquant (400)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"nom\": \"Incomplet\"\n}" },
+        "url": "http://localhost:3000/etudiants"
+      }
+    }
+  ]
+}
