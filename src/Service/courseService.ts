@@ -1,0 +1,3 @@
+import { AppError } from '../errors/appError';
+import { courseRepository } from '../Repositorie/courseRepository';
+export const courseService={list:()=>courseRepository.list(),create:(input:{code:string;name:string;description:string|null})=>courseRepository.create(input),update:async(id:number,input:{code:string;name:string;description:string|null})=>{const result=await courseRepository.update(id,input);if(!result)throw new AppError('UE introuvable',404);return result;},remove:async(id:number)=>{const result=await courseRepository.findById(id);if(!result)throw new AppError('UE introuvable',404);await courseRepository.remove(id);}};
