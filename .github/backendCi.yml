@@ -1,0 +1,52 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: exam_hub_test
+          POSTGRES_USER: exam_hub_test
+          POSTGRES_PASSWORD: exam_hub_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U exam_hub_test -d exam_hub_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: postgres://exam_hub_test:exam_hub_test_password@localhost:5432/exam_hub_test
+      JWT_SECRET: ci-only-secret-with-at-least-32-characters
+      CORS_ORIGIN: http://localhost:5173
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: ci-admin-password
+      POSTGRES_DB: exam_hub_test
+      POSTGRES_USER: exam_hub_test
+      POSTGRES_PASSWORD: exam_hub_test_password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply database schema
+        run: npm run migrate
+      - name: Type check
+        run: npm run check
+      - name: Run tests
+        run: npm test
+      - name: Build
+        run: npm run build
