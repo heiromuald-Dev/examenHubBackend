@@ -1,55 +1,193 @@
-import { AppError } from '../errors/appError';
-import { withTransaction } from '../configuration/transaction';
-import { courseRepository } from '../Repositorie/courseRepository';
-import { examRepository } from '../Repositorie/examRepository';
-import { groupRepository } from '../Repositorie/groupRepository';
-import { ExamInput } from '../types/examTypes';
-export const examService = {
-  list: () => examRepository.list(),
-  get: async (id: number) => {
-    const exam = await examRepository.findById(id);
-    if (!exam) throw new AppError('Examen introuvable', 404);
-    return {
-      ...exam, groupIds:
-        await groupRepository.groupIdsForExam(id)
-    };
+import { query, type QueryExecutor } from '../configuration/database';
+import type { ExamRecord } from '../types/examTypes';
+
+const executor = (client?: QueryExecutor): QueryExecutor => {
+  return client ?? { query };
+};
+
+export const examRepository = {
+  async list(client?: QueryExecutor): Promise<ExamRecord[]> {
+    const result = await executor(client).query<ExamRecord>(
+      `
+        SELECT
+          e.*,
+          c.code AS course_code,
+          c.name AS course_name
+        FROM exams e
+        INNER JOIN courses c ON c.id = e.course_id
+        ORDER BY e.starts_at DESC
+      `
+    );
+
+    return result.rows;
   },
-  create: async (input: ExamInput, createdBy: number) => withTransaction(async client => {
-    if (!(await courseRepository.findById(input.courseId, client)))
-      throw new AppError('UE introuvable', 404);
-    if (input.groupIds.length === 0)
-      throw new AppError('Au moins un groupe est obligatoire', 400);
-    const exam = await examRepository.create({
-      courseId: input.courseId, title: input.title, description: input.description ?? null, durationMinutes: input.durationMinutes, startsAt:
-        new Date(input.startsAt), endsAt:
-        new Date(input.endsAt), createdBy
-    }, client);
-    await groupRepository.replaceExamGroups(exam.id, input.groupIds, client);
-    return exam;
-  }),
-  update: async (id: number, input: ExamInput) => withTransaction(async client => {
-    const exam = await examRepository.findById(id, client);
-    if (!exam) throw new AppError('Examen introuvable', 404);
-    if (!(await courseRepository.findById(input.courseId, client)))
-      throw new AppError('UE introuvable', 404);
-    const updated = await examRepository.update(id, {
-      courseId: input.courseId, title: input.title, description: input.description ?? null, durationMinutes: input.durationMinutes, startsAt:
-        new Date(input.startsAt), endsAt:
-        new Date(input.endsAt)
-    }, client);
-    if (!updated) throw new AppError('Examen introuvable', 404);
-    await groupRepository.replaceExamGroups(id, input.groupIds, client);
-    return updated;
-  }),
-  remove: async (id: number) => {
-    if (!(await examRepository.findById(id)))
-      throw new AppError('Examen introuvable', 404);
-    await examRepository.remove(id);
+
+  async findById(
+    id: number,
+    client?: QueryExecutor
+  ): Promise<ExamRecord | null> {
+    const result = await executor(client).query<ExamRecord>(
+      `
+        SELECT
+          e.*,
+          c.code AS course_code,
+          c.name AS course_name
+        FROM exams e
+        INNER JOIN courses c ON c.id = e.course_id
+        WHERE e.id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+
+    return result.rows[0] ?? null;
   },
-  availableForStudent:(studentId:number)=>examRepository.listAvailableForStudent(studentId),
-  availableOneForStudent: async (examId: number, studentId: number) => {
-    const exam = await examRepository.findAvailableForStudent(examId, studentId);
-    if (!exam) throw new AppError('Examen indisponible ou non attribué à cet étudiant', 404);
+
+  async findAvailableForStudent(
+    examId: number,
+    studentId: number,
+    client?: QueryExecutor
+  ): Promise<ExamRecord | null> {
+    const result = await executor(client).query<ExamRecord>(
+      `
+        SELECT DISTINCT
+          e.*,
+          c.code AS course_code,
+          c.name AS course_name
+        FROM exams e
+        INNER JOIN courses c ON c.id = e.course_id
+        INNER JOIN exam_groups eg ON eg.exam_id = e.id
+        INNER JOIN student_groups sg ON sg.group_id = eg.group_id
+        INNER JOIN users u
+          ON u.id = sg.student_id
+         AND u.is_active = TRUE
+        WHERE e.id = $1
+          AND sg.student_id = $2
+          AND NOW() BETWEEN e.starts_at AND e.ends_at
+        LIMIT 1
+      `,
+      [examId, studentId]
+    );
+
+    return result.rows[0] ?? null;
+  },
+
+  async listAvailableForStudent(
+    studentId: number,
+    client?: QueryExecutor
+  ): Promise<ExamRecord[]> {
+    const result = await executor(client).query<ExamRecord>(
+      `
+        SELECT DISTINCT
+          e.*,
+          c.code AS course_code,
+          c.name AS course_name
+        FROM exams e
+        INNER JOIN courses c ON c.id = e.course_id
+        INNER JOIN exam_groups eg ON eg.exam_id = e.id
+        INNER JOIN student_groups sg ON sg.group_id = eg.group_id
+        INNER JOIN users u
+          ON u.id = sg.student_id
+         AND u.is_active = TRUE
+        WHERE sg.student_id = $1
+          AND NOW() BETWEEN e.starts_at AND e.ends_at
+        ORDER BY e.ends_at ASC
+      `,
+      [studentId]
+    );
+
+    return result.rows;
+  },
+
+  async create(
+    input: {
+      courseId: number;
+      title: string;
+      description: string | null;
+      durationMinutes: number;
+      startsAt: Date;
+      endsAt: Date;
+      createdBy: number;
+    },
+    client?: QueryExecutor
+  ): Promise<ExamRecord> {
+    const result = await executor(client).query<ExamRecord>(
+      `
+        INSERT INTO exams (
+          course_id,
+          title,
+          description,
+          duration_minutes,
+          starts_at,
+          ends_at,
+          created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `,
+      [
+        input.courseId,
+        input.title,
+        input.description,
+        input.durationMinutes,
+        input.startsAt,
+        input.endsAt,
+        input.createdBy
+      ]
+    );
+
+    const exam = result.rows[0];
+
+    if (!exam) {
+      throw new Error('La création de l’examen a échoué');
+    }
+
     return exam;
+  },
+
+  async update(
+    id: number,
+    input: {
+      courseId: number;
+      title: string;
+      description: string | null;
+      durationMinutes: number;
+      startsAt: Date;
+      endsAt: Date;
+    },
+    client?: QueryExecutor
+  ): Promise<ExamRecord | null> {
+    const result = await executor(client).query<ExamRecord>(
+      `
+        UPDATE exams
+        SET
+          course_id = $1,
+          title = $2,
+          description = $3,
+          duration_minutes = $4,
+          starts_at = $5,
+          ends_at = $6
+        WHERE id = $7
+        RETURNING *
+      `,
+      [
+        input.courseId,
+        input.title,
+        input.description,
+        input.durationMinutes,
+        input.startsAt,
+        input.endsAt,
+        id
+      ]
+    );
+
+    return result.rows[0] ?? null;
+  },
+
+  async remove(id: number, client?: QueryExecutor): Promise<void> {
+    await executor(client).query(
+      'DELETE FROM exams WHERE id = $1',
+      [id]
+    );
   }
 };
